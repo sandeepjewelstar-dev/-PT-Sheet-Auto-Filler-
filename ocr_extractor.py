@@ -9,14 +9,38 @@ import re
 import numpy as np
 from PIL import Image
 import logging
-from config import TESSERACT_PATH, IMAGE_RESIZE_FACTOR, IMAGE_THRESHOLD
+import os
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Set Tesseract path
-pytesseract.pytesseract.pytesseract_cmd = TESSERACT_PATH
+# Set Tesseract path - TRY MULTIPLE LOCATIONS
+def setup_tesseract():
+    """Setup Tesseract with proper path detection"""
+    possible_paths = [
+        r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+        r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        r"C:\Users\Admin\AppData\Local\Tesseract-OCR\tesseract.exe",
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            pytesseract.pytesseract.pytesseract_cmd = path
+            logger.info(f"✓ Tesseract found at: {path}")
+            return True
+    
+    logger.warning("⚠️  Tesseract not found in standard locations")
+    # Try to use system PATH
+    try:
+        pytesseract.pytesseract.pytesseract_cmd = "tesseract"
+        return True
+    except:
+        return False
+
+# Initialize Tesseract
+setup_tesseract()
 
 
 def extract_from_image(image_path):
@@ -46,7 +70,12 @@ def extract_from_image(image_path):
         
         # Extract text using Tesseract OCR
         logger.info("🔍 Extracting text using OCR...")
-        extracted_text = pytesseract.image_to_string(img_rgb)
+        try:
+            extracted_text = pytesseract.image_to_string(img_rgb)
+        except Exception as e:
+            logger.error(f"❌ OCR Failed: {str(e)}")
+            logger.warning("⚠️  Proceeding with manual data extraction...")
+            extracted_text = ""
         
         # Parse extracted text into structured data
         logger.info("📊 Parsing extracted data...")
@@ -77,15 +106,15 @@ def preprocess_image(img):
     """
     # Resize image for better OCR
     height, width = img.shape[:2]
-    new_width = int(width * IMAGE_RESIZE_FACTOR)
-    new_height = int(height * IMAGE_RESIZE_FACTOR)
+    new_width = int(width * 1.5)
+    new_height = int(height * 1.5)
     img_resized = cv2.resize(img, (new_width, new_height))
     
     # Convert to grayscale
     gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
     
     # Apply thresholding
-    _, binary = cv2.threshold(gray, IMAGE_THRESHOLD, 255, cv2.THRESH_BINARY)
+    _, binary = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
     
     # Denoise
     denoised = cv2.fastNlMeansDenoising(binary, h=10)
